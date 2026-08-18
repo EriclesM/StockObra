@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#14352f" />
+    <meta name="description" content="Sistema gratuito de controle de estoque, obras e movimentações." />
+    <title>ObraStock — Gestão de estoque</title>
+    <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <noscript>Este sistema precisa do JavaScript ativado para funcionar.</noscript>
+    <div id="app">
+      <div class="boot-screen">
+        <div class="brand-mark" aria-hidden="true">OS</div>
+        <p>Preparando seu estoque...</p>
+      </div>
+    </div>
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script>
+    <script src="./config.js"></script>
+    <script type="module" src="./assets/app.js"></script>
+  </body>
+</html>
