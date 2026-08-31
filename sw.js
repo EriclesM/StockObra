@@ -1,4 +1,4 @@
-const CACHE = "obrastock-v2";
+const CACHE = "obrastock-v1";
 const ASSETS = ["./", "./index.html", "./config.js", "./assets/styles.css", "./assets/app.js", "./assets/api.js", "./assets/icon.svg"];
 
 self.addEventListener("install", event => {
