@@ -212,8 +212,8 @@ function emptyState(iconName, title, description) {
   return `<div class="empty-state"><div class="empty-icon">${icon(iconName)}</div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p></div>`;
 }
 
-async function refreshCache(tables = ["products", "clients", "works", "movements"]) {
-  const results = await Promise.all(tables.map(table => api.list(table)));
+async function refreshCache(tables = ["products", "clients", "works", "movements"], options = {}) {
+  const results = await Promise.all(tables.map(table => api.list(table, options[table])));
   tables.forEach((table, index) => { state.cache[table] = results[index]; });
 }
 
@@ -315,8 +315,10 @@ function movementTable(rows, full = true) {
 }
 
 async function renderReports() {
-  await refreshCache(["movements", "works"]);
-  if (!state.reportFilters.workId && state.cache.works.length) state.reportFilters.workId = state.cache.works[0].id;
+  await refreshCache(["movements", "works"], { works: { includeInactive: true } });
+  if (!state.cache.works.some(item => item.id === state.reportFilters.workId)) {
+    state.reportFilters.workId = state.cache.works[0]?.id || "";
+  }
   drawReport();
 }
 
@@ -329,7 +331,7 @@ function drawReport() {
   document.querySelector("#content").innerHTML = `
     ${pageHead("Relatório por obra", "Filtre o período, imprima ou exporte as movimentações em CSV.", `<button class="btn btn-ghost" id="export-csv">${icon("download")}Exportar CSV</button><button class="btn btn-primary" id="print-report">${icon("print")}Imprimir</button>`)}
     <section class="panel filter-panel"><div class="panel-body"><div class="filter-row">
-      <div class="field"><label for="report-work">Obra</label><select id="report-work">${state.cache.works.map(item => `<option value="${item.id}" ${item.id === workId ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></div>
+      <div class="field"><label for="report-work">Obra</label><select id="report-work">${state.cache.works.map(item => `<option value="${item.id}" ${item.id === workId ? "selected" : ""}>${escapeHtml(item.name)}${item.active === false ? " (arquivada)" : ""}</option>`).join("")}</select></div>
       <div class="field"><label for="report-start">Data inicial</label><input id="report-start" type="date" value="${start}" /></div>
       <div class="field"><label for="report-end">Data final</label><input id="report-end" type="date" value="${end}" /></div>
     </div></div></section>
@@ -391,6 +393,10 @@ async function openEntityModal(entity, id = null) {
   if (!table) return;
   if (entity === "work" && !state.cache.clients.length) await refreshCache(["clients"]);
   const item = id ? state.cache[table].find(row => row.id === id) : null;
+  const availableClients = [...state.cache.clients];
+  if (entity === "work" && item?.client_id && !availableClients.some(client => client.id === item.client_id)) {
+    availableClients.push({ id: item.client_id, name: `${item.clients?.name || "Cliente"} (arquivado)` });
+  }
   const titles = { product: "produto", client: "cliente", work: "obra" };
   let body = "";
   if (entity === "product") body = `
@@ -405,7 +411,7 @@ async function openEntityModal(entity, id = null) {
   if (entity === "work") body = `
     <div class="form-grid">
       <div class="field span-2"><label class="required" for="name">Nome da obra</label><input id="name" name="name" required value="${escapeHtml(item?.name || "")}" placeholder="Ex.: Residencial Jardim" /></div>
-      <div class="field span-2"><label for="client_id">Cliente</label><select id="client_id" name="client_id"><option value="">Não informado</option>${state.cache.clients.map(client => `<option value="${client.id}" ${item?.client_id === client.id ? "selected" : ""}>${escapeHtml(client.name)}</option>`).join("")}</select></div>
+      <div class="field span-2"><label for="client_id">Cliente</label><select id="client_id" name="client_id"><option value="">Não informado</option>${availableClients.map(client => `<option value="${client.id}" ${item?.client_id === client.id ? "selected" : ""}>${escapeHtml(client.name)}</option>`).join("")}</select></div>
       <div class="field span-2"><label class="required" for="address">Endereço</label><input id="address" name="address" required value="${escapeHtml(item?.address || "")}" placeholder="Rua, número, bairro e cidade" /></div>
       <div class="field span-2"><label class="required" for="status">Situação</label><select id="status" name="status">${["Planejada", "Em andamento", "Concluída"].map(status => `<option ${item?.status === status ? "selected" : ""}>${status}</option>`).join("")}</select></div>
     </div>`;
@@ -504,9 +510,9 @@ async function openMovementModal(initialType = "saida") {
 }
 
 function confirmDelete(table, id, name) {
-  confirmAction(`Excluir “${name}”?`, "A exclusão só será permitida se o cadastro não possuir vínculos.", async () => {
-    await api.remove(table, id);
-    toast("Cadastro excluído com sucesso.");
+  confirmAction(`Excluir “${name}”?`, "Se possuir vínculos, o cadastro será arquivado: deixará de aparecer nas telas operacionais, mas continuará no histórico e nos relatórios.", async () => {
+    const result = await api.remove(table, id);
+    toast(result.archived ? "Cadastro arquivado. O histórico foi preservado." : "Cadastro excluído definitivamente.");
     await renderView();
   }, "Excluir");
 }
