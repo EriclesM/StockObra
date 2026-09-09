@@ -23,12 +23,12 @@ function seedDemo() {
     users: [{ id: adminId, full_name: "Administrador", email: "admin@obraestoque.com", password: "123456" }],
     profiles: [{ id: adminId, full_name: "Administrador", email: "admin@obraestoque.com", created_at: new Date().toISOString() }],
     clients: [
-      { id: client1, name: "Residencial Aurora", active: true, created_at: new Date().toISOString() },
-      { id: client2, name: "Comercial São Bento", active: true, created_at: new Date().toISOString() }
+      { id: client1, name: "Residencial Aurora", created_at: new Date().toISOString() },
+      { id: client2, name: "Comercial São Bento", created_at: new Date().toISOString() }
     ],
     works: [
-      { id: work1, client_id: client1, name: "Edifício Aurora", address: "Rua das Flores, 240 — Curitiba/PR", status: "Em andamento", active: true, created_at: new Date().toISOString() },
-      { id: work2, client_id: client2, name: "Reforma Loja Centro", address: "Av. Sete de Setembro, 1510 — Curitiba/PR", status: "Planejada", active: true, created_at: new Date().toISOString() }
+      { id: work1, client_id: client1, name: "Edifício Aurora", address: "Rua das Flores, 240 — Curitiba/PR", status: "Em andamento", created_at: new Date().toISOString() },
+      { id: work2, client_id: client2, name: "Reforma Loja Centro", address: "Av. Sete de Setembro, 1510 — Curitiba/PR", status: "Planejada", created_at: new Date().toISOString() }
     ],
     products: [
       { id: cement, sku: "CIM-CP2-50", name: "Cimento CP II 50 kg", unit: "saco", minimum_stock: 20, sale_price: 42.9, current_stock: 68, active: true, created_at: new Date().toISOString() },
@@ -122,12 +122,9 @@ class DemoApi {
     return rows;
   }
 
-  async list(table, { includeInactive = false } = {}) {
+  async list(table) {
     const data = this.load();
     let rows = [...(data[table] || [])];
-    if (!includeInactive && ["products", "clients", "works"].includes(table)) {
-      rows = rows.filter(item => item.active !== false);
-    }
     if (table === "movements") rows.sort((a, b) => b.movement_date.localeCompare(a.movement_date) || b.created_at.localeCompare(a.created_at));
     else if (table === "products") rows.sort((a, b) => a.name.localeCompare(b.name));
     else rows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -138,7 +135,6 @@ class DemoApi {
     const data = this.load();
     if (!data[table]) throw new Error("Cadastro não reconhecido.");
     const record = { id: uid(), ...payload, created_at: new Date().toISOString() };
-    if (["products", "clients", "works"].includes(table)) record.active = true;
     if (table === "products") record.current_stock = 0;
     if (table === "movements") {
       const product = data.products.find(item => item.id === payload.product_id);
@@ -172,17 +168,9 @@ class DemoApi {
       works: data.movements.some(item => item.work_id === id),
       clients: data.works.some(item => item.client_id === id)
     };
-    if (references[table]) {
-      const record = data[table].find(item => item.id === id);
-      if (!record) throw new Error("Registro não encontrado.");
-      record.active = false;
-      record.updated_at = new Date().toISOString();
-      this.save(data);
-      return { archived: true };
-    }
+    if (references[table]) throw new Error("Este registro possui vínculos e não pode ser excluído.");
     data[table] = data[table].filter(item => item.id !== id);
     this.save(data);
-    return { archived: false };
   }
 
   async resetDemo() {
@@ -238,14 +226,11 @@ class SupabaseApi {
     return data;
   }
 
-  async list(table, { includeInactive = false } = {}) {
+  async list(table) {
     let select = "*";
     if (table === "works") select = "*, clients(name)";
     if (table === "movements") select = "*, products(name, unit), works(name), profiles!movements_performed_by_fkey(full_name)";
     let query = this.client.from(table).select(select);
-    if (!includeInactive && ["products", "clients", "works"].includes(table)) {
-      query = query.eq("active", true);
-    }
     query = table === "movements"
       ? query.order("movement_date", { ascending: false }).order("created_at", { ascending: false })
       : query.order("name", { ascending: true });
@@ -269,15 +254,7 @@ class SupabaseApi {
   async remove(table, id) {
     if (table === "movements") throw new Error("Movimentações não podem ser excluídas para preservar o histórico.");
     const { error } = await this.client.from(table).delete().eq("id", id);
-    if (!error) return { archived: false };
-    if (error.code !== "23503" && !error.message?.includes("foreign key")) throw error;
-
-    const { error: archiveError } = await this.client
-      .from(table)
-      .update({ active: false })
-      .eq("id", id);
-    if (archiveError) throw archiveError;
-    return { archived: true };
+    if (error) throw error;
   }
 }
 
