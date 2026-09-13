@@ -122,9 +122,13 @@ class DemoApi {
     return rows;
   }
 
-  async list(table) {
+  async list(table, { includeInactive = false } = {}) {
     const data = this.load();
     let rows = [...(data[table] || [])];
+    // Cadastros antigos sem active continuam visíveis.
+    if (!includeInactive && ["clients", "works", "products"].includes(table)) {
+      rows = rows.filter(item => item.active !== false);
+    }
     if (table === "movements") rows.sort((a, b) => b.movement_date.localeCompare(a.movement_date) || b.created_at.localeCompare(a.created_at));
     else if (table === "products") rows.sort((a, b) => a.name.localeCompare(b.name));
     else rows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -134,11 +138,18 @@ class DemoApi {
   async create(table, payload) {
     const data = this.load();
     if (!data[table]) throw new Error("Cadastro não reconhecido.");
+    if (table === "works" && payload.client_id &&
+        !data.clients.some(item => item.id === payload.client_id && item.active !== false)) {
+      throw new Error("Cliente não encontrado ou arquivado.");
+    }
     const record = { id: uid(), ...payload, created_at: new Date().toISOString() };
     if (table === "products") record.current_stock = 0;
     if (table === "movements") {
       const product = data.products.find(item => item.id === payload.product_id);
-      if (!product) throw new Error("Produto não encontrado.");
+      if (!product || product.active === false) throw new Error("Produto não encontrado ou arquivado.");
+      if (payload.work_id && !data.works.some(item => item.id === payload.work_id && item.active !== false)) {
+        throw new Error("Obra não encontrada ou arquivada.");
+      }
       const quantity = Number(payload.quantity);
       if (payload.type === "saida" && Number(product.current_stock) < quantity) {
         throw new Error(`Estoque insuficiente. Disponível: ${product.current_stock} ${product.unit}.`);
@@ -163,14 +174,22 @@ class DemoApi {
   async remove(table, id) {
     if (table === "movements") throw new Error("Movimentações não podem ser excluídas para preservar o histórico.");
     const data = this.load();
+    if (!["products", "works", "clients"].includes(table)) throw new Error("Cadastro não reconhecido.");
+    const record = data[table].find(item => item.id === id);
+    if (!record) throw new Error("Registro não encontrado.");
     const references = {
       products: data.movements.some(item => item.product_id === id),
       works: data.movements.some(item => item.work_id === id),
       clients: data.works.some(item => item.client_id === id)
     };
-    if (references[table]) throw new Error("Este registro possui vínculos e não pode ser excluído.");
-    data[table] = data[table].filter(item => item.id !== id);
+    if (references[table]) {
+      record.active = false;
+      record.updated_at = new Date().toISOString();
+    } else {
+      data[table] = data[table].filter(item => item.id !== id);
+    }
     this.save(data);
+    return { archived: Boolean(references[table]) };
   }
 
   async resetDemo() {
